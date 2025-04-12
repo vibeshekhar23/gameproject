@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #game-board {
+            display: grid;
+            grid-template-columns: repeat(20, 20px);
+            grid-template-rows: repeat(20, 20px);
+            border: 2px solid #333;
+            background-color: #222;
+        }
+        .cell {
+            width: 20px;
+            height: 20px;
+            box-sizing: border-box;
+        }
+        .snake {
+            background-color: #4CAF50;
+            border: 1px solid #388E3C;
+        }
+        .food {
+            background-color: #F44336;
+            border-radius: 50%;
+            border: 1px solid #D32F2F;
+        }
+        #score-container {
+            margin-top: 20px;
+            font-size: 24px;
+        }
+        #controls {
+            margin-top: 20px;
+            text-align: center;
+        }
+        #start-button, #sound-toggle {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        #sound-toggle {
+            background-color: #2196F3;
+        }
+        #game-over {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: center;
+            display: none;
+        }
+        #audio-controls {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <h1>Snake Game</h1>
+        <div id="game-board"></div>
+        <div id="score-container">Score: <span id="score">0</span></div>
+        <div id="controls">
+            <button id="start-button">Start Game</button>
+            <button id="sound-toggle">Music: On</button>
+        </div>
+        <div id="game-over">
+            <h2>Game Over!</h2>
+            <p>Your final score: <span id="final-score">0</span></p>
+            <button id="restart-button">Play Again</button>
+        </div>
+        
+        <!-- Audio elements -->
+        <audio id="background-music" loop>
+            <source src="background.mp3" type="audio/mpeg">
+            Your browser does not support the audio element.
+        </audio>
+        
+        <audio id="gameover-sound">
+            <source src="gameover.mp3" type="audio/mpeg">
+            Your browser does not support the audio element.
+        </audio>
+        
+        <audio id="powerup-sound">
+            <source src="powerup.wav" type="audio/wav">
+            Your browser does not support the audio element.
+        </audio>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Game constants
+            const GRID_SIZE = 20;
+            const CELL_SIZE = 20;
+            const INITIAL_SPEED = 150;
+            
+            // Game variables
+            let snake = [];
+            let food = {};
+            let direction = 'right';
+            let nextDirection = 'right';
+            let gameRunning = false;
+            let gameLoop;
+            let score = 0;
+            let soundEnabled = true;
+            
+            // DOM elements
+            const gameBoard = document.getElementById('game-board');
+            const scoreElement = document.getElementById('score');
+            const finalScoreElement = document.getElementById('final-score');
+            const startButton = document.getElementById('start-button');
+            const gameOverElement = document.getElementById('game-over');
+            const restartButton = document.getElementById('restart-button');
+            const backgroundMusic = document.getElementById('background-music');
+            const gameoverSound = document.getElementById('gameover-sound');
+            const powerupSound = document.getElementById('powerup-sound');
+            const soundToggle = document.getElementById('sound-toggle');
+            
+            // Audio controls
+            function toggleSound() {
+                soundEnabled = !soundEnabled;
+                if (soundEnabled) {
+                    if (gameRunning) {
+                        backgroundMusic.play();
+                    }
+                    soundToggle.textContent = 'Music: On';
+                } else {
+                    backgroundMusic.pause();
+                    soundToggle.textContent = 'Music: Off';
+                }
+            }
+            
+            // Play sound effect
+            function playSound(audioElement) {
+                if (soundEnabled) {
+                    // Reset to beginning and play
+                    audioElement.currentTime = 0;
+                    audioElement.play().catch(error => {
+                        console.log("Sound playback failed: ", error);
+                    });
+                }
+            }
+            
+            // Initialize the game board
+            function initializeBoard() {
+                gameBoard.innerHTML = '';
+                for (let row = 0; row < GRID_SIZE; row++) {
+                    for (let col = 0; col < GRID_SIZE; col++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'cell';
+                        cell.id = `cell-${row}-${col}`;
+                        gameBoard.appendChild(cell);
+                    }
+                }
+            }
+            
+            // Start the game
+            function startGame() {
+                if (gameRunning) return;
+                
+                // Reset game state
+                snake = [
+                    {row: 10, col: 6},
+                    {row: 10, col: 5},
+                    {row: 10, col: 4}
+                ];
+                direction = 'right';
+                nextDirection = 'right';
+                score = 0;
+                scoreElement.textContent = score;
+                
+                // Clear the board
+                clearBoard();
+                
+                // Place initial food
+                placeFood();
+                
+                // Render the initial state
+                renderGame();
+                
+                // Start the game loop
+                gameRunning = true;
+                gameLoop = setInterval(gameStep, INITIAL_SPEED);
+                
+                // Hide the game over screen
+                gameOverElement.style.display = 'none';
+                
+                // Change button text
+                startButton.textContent = 'Reset Game';
+                
+                // Start the background music
+                if (soundEnabled) {
+                    // Make sure the audio is at the beginning
+                    backgroundMusic.currentTime = 0;
+                    backgroundMusic.play().catch(error => {
+                        console.log("Audio playback failed: ", error);
+                    });
+                }
+                
+                // Reset the sound effects
+                gameoverSound.pause();
+                gameoverSound.currentTime = 0;
+                powerupSound.pause();
+                powerupSound.currentTime = 0;
+            }
+            
+            // Reset the game
+            function resetGame() {
+                clearInterval(gameLoop);
+                gameRunning = false;
+                startButton.textContent = 'Start Game';
+                clearBoard();
+                
+                // Pause the background music
+                backgroundMusic.pause();
+            }
+            
+            // Clear the board
+            function clearBoard() {
+                const cells = document.querySelectorAll('.cell');
+                cells.forEach(cell => {
+                    cell.classList.remove('snake', 'food');
+                });
+            }
+            
+            // Game step - move the snake and check for collisions
+            function gameStep() {
+                direction = nextDirection;
+                moveSnake();
+                if (checkCollision()) {
+                    endGame();
+                    return;
+                }
+                
+                if (checkFood()) {
+                    // Snake ate food, don't remove the tail
+                    score += 10;
+                    scoreElement.textContent = score;
+                    
+                    // Play the powerup sound when score increases
+                    playSound(powerupSound);
+                    
+                    placeFood();
+                } else {
+                    // Remove the tail
+                    const tail = snake.pop();
+                    const tailCell = document.getElementById(`cell-${tail.row}-${tail.col}`);
+                    tailCell.classList.remove('snake');
+                }
+                
+                // Render the head
+                const head = snake[0];
+                const headCell = document.getElementById(`cell-${head.row}-${head.col}`);
+                headCell.classList.add('snake');
+            }
+            
+            // Move the snake
+            function moveSnake() {
+                const head = {...snake[0]};
+                
+                switch (direction) {
+                    case 'up':
+                        head.row--;
+                        break;
+                    case 'down':
+                        head.row++;
+                        break;
+                    case 'left':
+                        head.col--;
+                        break;
+                    case 'right':
+                        head.col++;
+                        break;
+                }
+                
+                snake.unshift(head);
+            }
+            
+            // Check for collisions with walls or self
+            function checkCollision() {
+                const head = snake[0];
+                
+                // Check for wall collision
+                if (head.row < 0 || head.row >= GRID_SIZE || head.col < 0 || head.col >= GRID_SIZE) {
+                    return true;
+                }
+                
+                // Check for self collision (skip the head)
+                for (let i = 1; i < snake.length; i++) {
+                    if (snake[i].row === head.row && snake[i].col === head.col) {
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+            
+            // Check if the snake has eaten food
+            function checkFood() {
+                const head = snake[0];
+                return head.row === food.row && head.col === food.col;
+            }
+            
+            // Place food randomly on the grid
+            function placeFood() {
+                // Remove existing food
+                const foodCell = document.getElementById(`cell-${food.row}-${food.col}`);
+                if (foodCell) {
+                    foodCell.classList.remove('food');
+                }
+                
+                // Generate random position for food
+                let validPosition = false;
+                while (!validPosition) {
+                    food = {
+                        row: Math.floor(Math.random() * GRID_SIZE),
+                        col: Math.floor(Math.random() * GRID_SIZE)
+                    };
+                    
+                    // Check if the position is valid (not on snake)
+                    validPosition = true;
+                    for (const segment of snake) {
+                        if (segment.row === food.row && segment.col === food.col) {
+                            validPosition = false;
+                            break;
+                        }
+                    }
+                }
+                
+                // Add food to the board
+                const newFoodCell = document.getElementById(`cell-${food.row}-${food.col}`);
+                newFoodCell.classList.add('food');
+            }
+            
+            // Render the game state
+            function renderGame() {
+                // Clear the board
+                clearBoard();
+                
+                // Render the snake
+                snake.forEach(segment => {
+                    const cell = document.getElementById(`cell-${segment.row}-${segment.col}`);
+                    if (cell) {
+                        cell.classList.add('snake');
+                    }
+                });
+                
+                // Render the food
+                const foodCell = document.getElementById(`cell-${food.row}-${food.col}`);
+                if (foodCell) {
+                    foodCell.classList.add('food');
+                }
+            }
+            
+            // End the game
+            function endGame() {
+                clearInterval(gameLoop);
+                gameRunning = false;
+                finalScoreElement.textContent = score;
+                gameOverElement.style.display = 'block';
+                startButton.textContent = 'Start Game';
+                
+                // Pause the background music
+                backgroundMusic.pause();
+                
+                // Play the game over sound
+                playSound(gameoverSound);
+            }
+            
+            // Handle keyboard input
+            document.addEventListener('keydown', (event) => {
+                if (!gameRunning) return;
+                
+                switch (event.key) {
+                    case 'ArrowUp':
+                        if (direction !== 'down') {
+                            nextDirection = 'up';
+                        }
+                        break;
+                    case 'ArrowDown':
+                        if (direction !== 'up') {
+                            nextDirection = 'down';
+                        }
+                        break;
+                    case 'ArrowLeft':
+                        if (direction !== 'right') {
+                            nextDirection = 'left';
+                        }
+                        break;
+                    case 'ArrowRight':
+                        if (direction !== 'left') {
+                            nextDirection = 'right';
+                        }
+                        break;
+                }
+                
+                // Prevent arrow keys from scrolling the page
+                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+                    event.preventDefault();
+                }
+            });
+            
+            // Button event listeners
+            startButton.addEventListener('click', () => {
+                if (gameRunning) {
+                    resetGame();
+                } else {
+                    startGame();
+                }
+            });
+            
+            restartButton.addEventListener('click', () => {
+                gameOverElement.style.display = 'none';
+                startGame();
+            });
+            
+            soundToggle.addEventListener('click', toggleSound);
+            
+            // Initialize the game
+            initializeBoard();
+            
+            // Preload all audio files
+            backgroundMusic.load();
+            gameoverSound.load();
+            powerupSound.load();
+        });
+    </script>
+</body>
+</html>
